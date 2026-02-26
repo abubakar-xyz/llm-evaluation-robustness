@@ -1,45 +1,69 @@
-# Updated prompt_stability_evaluation.py
+# ILINA Technical Track Code Sample
+# Project: Prompt Sensitivity & Evaluation Robustness Framework
 
-def model_predict(prompt):
-    import hashlib
-    import random
-    global SEED
-    # Use hashing to create deterministic pseudo-randomness from prompt
-    hash_digest = hashlib.sha256(prompt.encode()).hexdigest()
-    random.seed(int(hash_digest, 16) + SEED)
-    # Your model prediction logic here
-    return prediction
+import random
+import numpy as np
+from typing import List, Dict
+from dataclasses import dataclass
+import json
 
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
 
-def compute_accuracy(base_prompt, variants, labels):
-    base_accuracy = compute_accuracy_for_prompt(base_prompt, labels)
-    mean_accuracy = sum(compute_accuracy_for_prompt(variant, labels) for variant in variants) / len(variants)
-    stable_and_correct = calculate_stable_and_correct(base_accuracy, mean_accuracy)
-    return base_accuracy, mean_accuracy, stable_and_correct
+@dataclass
+class Example:
+    base_prompt: str
+    label: int
 
+def model_predict(prompt: str) -> int:
+    base_score = sum(ord(c) for c in prompt) % 2
+    noise = random.random()
+    if noise < 0.1:
+        return 1 - base_score
+    return base_score
 
-def compute_stability(predictions):
-    if not predictions:
-        return 0.0  # Handle empty predictions gracefully
-    # Compute stability logic here
-    return stability_score
+def generate_variants(prompt: str) -> List[str]:
+    return [
+        prompt,
+        prompt + " Please answer clearly.",
+        "In your view, " + prompt.lower(),
+        prompt.replace("Is", "Would you say"),
+        prompt + " Be precise.",
+    ]
 
+def compute_stability(predictions: List[int]) -> float:
+    most_common = max(set(predictions), key=predictions.count)
+    return predictions.count(most_common) / len(predictions)
 
-def generate_variants(prompt):
-    if prompt.startswith('Is '):
-        return [prompt.replace('Is ', ' Is ') for _ in range(5)]  # Only replace leading 'Is'
-    return [prompt]
-
-
-def output_results(base_accuracy, mean_accuracy, stability, stable_and_correct):
-    import json
-    results = {
-        'overall_accuracy_base': base_accuracy,
-        'overall_accuracy_variants': mean_accuracy,
-        'overall_stability': stability,
-        'overall_stable_and_correct_rate': stable_and_correct,
-        'per_examples': []  # Include example results later
+def run_experiment(dataset: List[Example]) -> Dict:
+    results = []
+    stability_scores = []
+    for example in dataset:
+        variants = generate_variants(example.base_prompt)
+        preds = [model_predict(p) for p in variants]
+        stability = compute_stability(preds)
+        stability_scores.append(stability)
+        results.append({
+            "prompt": example.base_prompt,
+            "predictions": preds,
+            "stability": stability
+        })
+    overall_stability = float(np.mean(stability_scores))
+    return {
+        "overall_stability": overall_stability,
+        "detailed_results": results
     }
-    print(json.dumps(results, indent=4))
 
-# SEED value should be defined elsewhere in the program
+dataset = [
+    Example("Is this text about economics?", 1),
+    Example("Is this sentence discussing sports?", 0),
+    Example("Is the topic related to politics?", 1),
+    Example("Is this about cooking recipes?", 0),
+]
+
+if __name__ == "__main__":
+    output = run_experiment(dataset)
+    print("Overall Stability Score:", output["overall_stability"])
+    with open("evaluation_results.json", "w") as f:
+        json.dump(output, f, indent=4)
